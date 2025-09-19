@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import createHttpError from "http-errors";
 import User from "../models/user.js";
 import Recipe from "../models/recipe.js";
+import assertIsDefined from "../util/assertIsDefined.js";
 
 export const getAuthenticatedUser: RequestHandler = async (request, response, next) => {
     try {
@@ -14,12 +15,16 @@ export const getAuthenticatedUser: RequestHandler = async (request, response, ne
 };
 
 interface GetUserRecipesParams {
-    username: string,
+    username?: string,
 };
 
 export const getUserRecipes: RequestHandler<GetUserRecipesParams, unknown, unknown, unknown> = async (request, response, next) => {
+    const author = request.params.username;
+
     try {
-        const user = await User.findOne({ username: request.params.username }).exec();
+        assertIsDefined(author);
+
+        const user = await User.findOne({ username: author }).exec();
 
         if (!user) {
             throw createHttpError(404, "User not found");
@@ -57,8 +62,16 @@ export const signUp: RequestHandler<unknown, unknown, SignUpBody, unknown> = asy
             throw createHttpError(400, "Username is missing");
         }
 
+        if (typeof username !== "string") {
+            throw createHttpError(400, "Invalid username");
+        }
+
         if (!email) {
             throw createHttpError(400, "Email is missing");
+        }
+
+        if (typeof email !== "string") {
+            throw createHttpError(400, "Invalid email");
         }
 
         if (!password) {
@@ -103,6 +116,10 @@ export const logIn: RequestHandler<unknown, unknown, LogInBody, unknown> = async
     try {
         if (!username) {
             throw createHttpError(400, "Username is missing");
+        }
+
+        if (typeof username !== "string") {
+            throw createHttpError(400, "Invalid username");
         }
 
         if (!password) {

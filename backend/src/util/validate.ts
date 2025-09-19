@@ -9,4 +9,5 @@ export default cleanEnv(process.env, {
     SESSION_SECRET: str(),
     UPSTASH_REDIS_REST_URL: str(),
     UPSTASH_REDIS_REST_TOKEN: str(),
+    NODE_ENV: str(),
 });
