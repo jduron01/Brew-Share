@@ -9,6 +9,8 @@ import connectDB from "./config/database.js";
 import userRoutes from "./routes/userRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
+import requiresAuth from "./middleware/auth.js";
+import { apiRateLimiter } from "./middleware/rateLimiters.js";
 import { handleHttpErrors, handleUnfoundEndpoint } from "./middleware/errorHandlers.js";
 
 const app = express();
@@ -34,7 +36,7 @@ app.use(session({
 app.use(lusca.csrf());
 app.use("/api/users", userRoutes);
 app.use("/api/recipes", recipeRoutes);
-app.use("/api/reviews", reviewRoutes);
+app.use("/api/reviews", requiresAuth, apiRateLimiter, reviewRoutes);
 app.use(handleUnfoundEndpoint);
 app.use(handleHttpErrors);
 
