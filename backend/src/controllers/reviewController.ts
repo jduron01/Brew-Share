@@ -19,7 +19,7 @@ export const getReviews: RequestHandler = async (request, response, next) => {
 };
 
 interface CreateReviewParams {
-    recipeId: string,
+    recipeId?: string,
 };
 
 interface CreateReviewBody {
@@ -35,6 +35,7 @@ export const createReview: RequestHandler<CreateReviewParams, unknown, CreateRev
 
     try {
         assertIsDefined(authenticatedUserId);
+        assertIsDefined(recipeId);
 
         const user = await User.findById(authenticatedUserId).exec();
 
@@ -82,7 +83,7 @@ export const createReview: RequestHandler<CreateReviewParams, unknown, CreateRev
 };
 
 interface UpdateReviewParams {
-    id: string,
+    id?: string,
 };
 
 interface UpdateReviewBody {
@@ -97,13 +98,24 @@ export const updateReview: RequestHandler<UpdateReviewParams, unknown, UpdateRev
 
     try {
         assertIsDefined(authenticatedUserId);
+        assertIsDefined(reviewId);
 
         if (!mongoose.isValidObjectId(reviewId)) {
             throw createHttpError(400, "Invalid review ID");
         }
 
-        if (rating && (rating < 1 || rating > 5)) {
-            throw createHttpError(400, "Rating needs to be between 1 and 5 inclusive");
+        if (comment && typeof comment !== "string") {
+            throw createHttpError(400, "Invalid comment");
+        }
+
+        if (rating) {
+            if (typeof rating !== "number") {
+                throw createHttpError(400, "Invalid rating");
+            }
+
+            if (rating < 1 || rating > 5) {
+                throw createHttpError(400, "Rating needs to be between 1 and 5 inclusive");
+            }
         }
 
         const updatedReview = await Review.findOneAndUpdate(
@@ -129,7 +141,7 @@ export const updateReview: RequestHandler<UpdateReviewParams, unknown, UpdateRev
 };
 
 interface DeleteReviewParams {
-    id: string,
+    id?: string,
 };
 
 export const deleteReview: RequestHandler<DeleteReviewParams, unknown, unknown, unknown> = async (request, response, next) => {
@@ -138,6 +150,7 @@ export const deleteReview: RequestHandler<DeleteReviewParams, unknown, unknown, 
 
     try {
         assertIsDefined(authenticatedUserId);
+        assertIsDefined(reviewId);
 
         if (!mongoose.isValidObjectId(reviewId)) {
             throw createHttpError(400, "Invalid review ID");

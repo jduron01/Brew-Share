@@ -7,13 +7,14 @@ import {
     deleteRecipe,
 } from "../controllers/recipeController.js";
 import requiresAuth from "../middleware/auth.js";
+import { apiRateLimiter } from "../middleware/rateLimiters.js";
 
 const router = express.Router();
 
-router.get("/", getRecipes);
-router.get("/:id", getRecipe);
-router.post("/", requiresAuth, createRecipe);
-router.patch("/:id", requiresAuth, updateRecipe);
-router.delete("/:id", requiresAuth, deleteRecipe);
+router.get("/", apiRateLimiter, getRecipes);
+router.get("/:id", apiRateLimiter, getRecipe);
+router.post("/", requiresAuth, apiRateLimiter, createRecipe);
+router.patch("/:id", requiresAuth, apiRateLimiter, updateRecipe);
+router.delete("/:id", requiresAuth, apiRateLimiter, deleteRecipe);
 
 export default router;

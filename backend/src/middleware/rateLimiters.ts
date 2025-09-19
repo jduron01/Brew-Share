@@ -22,13 +22,20 @@ export const authRateLimiter: RequestHandler = async (request, response, next) =
     }
 };
 
-export const apiRateLimiter: RequestHandler = async (request, resonse, next) => {
+export const apiRateLimiter: RequestHandler = async (request, response, next) => {
     const authenticatedUserId = request.session.userId;
+    const userIp = request.ip;
 
     try {
-        assertIsDefined(authenticatedUserId);
+        let success;
 
-        const { success } = await apiRateLimit.limit(authenticatedUserId.toString());
+        if (authenticatedUserId) {
+            success = (await apiRateLimit.limit(authenticatedUserId.toString())).success;
+        } else if (userIp) {
+            success = (await apiRateLimit.limit(userIp)).success;
+        } else {
+            throw createHttpError(500, "Error obtaining IP address");
+        }
 
         if (!success) {
             throw createHttpError(429, "Too many API requests");

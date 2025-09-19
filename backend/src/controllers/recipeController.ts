@@ -15,13 +15,15 @@ export const getRecipes: RequestHandler = async (request, response, next) => {
 };
 
 interface GetRecipeParams {
-    id: string,
+    id?: string,
 };
 
 export const getRecipe: RequestHandler<GetRecipeParams, unknown, unknown, unknown> = async (request, response, next) => {
     const recipeId = request.params.id;
 
     try {
+        assertIsDefined(recipeId);
+
         if (!mongoose.isValidObjectId(recipeId)) {
             throw createHttpError(400, "Invalid recipe ID");
         }
@@ -44,13 +46,13 @@ interface CreateRecipeBody {
     instructions: string[],
     description?: string,
     imageUrl?: string,
-    names: string[],
     quantities: string[],
+    names: string[],
 };
 
 export const createRecipe: RequestHandler<unknown, unknown, CreateRecipeBody, unknown> = async (request, response, next) => {
     const authenticatedUserId = request.session.userId;
-    const { title, instructions, description, imageUrl, names, quantities } = request.body;
+    const { title, instructions, description, imageUrl, quantities, names } = request.body;
 
     try {
         assertIsDefined(authenticatedUserId);
@@ -69,15 +71,15 @@ export const createRecipe: RequestHandler<unknown, unknown, CreateRecipeBody, un
             throw createHttpError(400, "Recipe instructions are missing");
         }
 
-        if (!names || names.length === 0) {
-            throw createHttpError(400, "Recipe ingredient names are missing");
-        }
-
         if (!quantities || quantities.length === 0) {
             throw createHttpError(400, "Recipe ingredient quantities are missing");
         }
 
-        const ingredients = await processIngredients(names, quantities);
+        if (!names || names.length === 0) {
+            throw createHttpError(400, "Recipe ingredient names are missing");
+        }
+
+        const ingredients = await processIngredients(quantities, names);
         const savedRecipe = await Recipe.create({
             title,
             user,
@@ -101,7 +103,7 @@ export const createRecipe: RequestHandler<unknown, unknown, CreateRecipeBody, un
 };
 
 interface UpdateRecipeParams {
-    id: string,
+    id?: string,
 };
 
 interface UpdateRecipeBody {
@@ -110,25 +112,58 @@ interface UpdateRecipeBody {
     instructions?: string[],
     description?: string,
     imageUrl?: string,
-    names?: string[],
     quantities?: string[],
+    names?: string[],
 };
 
 export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRecipeBody, unknown> = async (request, response, next) => {
     const authenticatedUserId = request.session.userId;
     const recipeId = request.params.id;
-    const { title, instructions, description, imageUrl, names, quantities } = request.body;
+    const { title, instructions, description, imageUrl, quantities, names } = request.body;
     let ingredients;
 
     try {
         assertIsDefined(authenticatedUserId);
+        assertIsDefined(recipeId);
 
         if (!mongoose.isValidObjectId(recipeId)) {
             throw createHttpError(400, "Invalid recipe ID");
         }
 
-        if (names && quantities && names.length === quantities.length) {
-            ingredients = await processIngredients(names, quantities);
+        if (title && typeof title !== "string") {
+            throw createHttpError(400, "Invalid recipe title");
+        }
+
+        if (instructions) {
+            for (const instruction of instructions) {
+                if (typeof instruction !== "string") {
+                    throw createHttpError(400, "One or more recipe instructions are invalid");
+                }
+            }
+        }
+
+        if (description && typeof description !== "string") {
+            throw createHttpError(400, "Recipe description is invalid");
+        }
+
+        if (imageUrl && typeof imageUrl !== "string") {
+            throw createHttpError(400, "Recipe image URL is invalid");
+        }
+
+        if (quantities && names) {
+            for (const quantity of quantities) {
+                if (typeof quantity !== "string") {
+                    throw createHttpError(400, "One or more ingredient quantities are invalid");
+                }
+            }
+
+            for (const name of names) {
+                if (typeof name !== "string") {
+                    throw createHttpError(400, "One or more ingredient names are invalid");
+                }
+            }
+
+            ingredients = await processIngredients(quantities, names);
         }
 
         const updatedRecipe = await Recipe.findOneAndUpdate(
@@ -148,7 +183,7 @@ export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRec
 };
 
 interface DeleteRecipeParams {
-    id: string,
+    id?: string,
 };
 
 export const deleteRecipe: RequestHandler<DeleteRecipeParams, unknown, unknown, unknown> = async (request, response, next) => {
@@ -157,6 +192,7 @@ export const deleteRecipe: RequestHandler<DeleteRecipeParams, unknown, unknown, 
 
     try {
         assertIsDefined(authenticatedUserId);
+        assertIsDefined(recipeId);
 
         const user = await User.findById(authenticatedUserId).exec();
 
@@ -183,24 +219,24 @@ export const deleteRecipe: RequestHandler<DeleteRecipeParams, unknown, unknown, 
     }
 };
 
-const processIngredients = async (names: string[], quantities: string[]) => {
-    if (!names || !quantities || names.length !== quantities.length) {
+const processIngredients = async (quantities: string[], names: string[]) => {
+    if (quantities.length !== names.length) {
         throw createHttpError(400, "Ingredient names don't match quantities");
     }
 
-    return Promise.all(names.map(async (name, i) => {
-        let quantity = quantities[i];
-
-        if (!name || !name.trim()) {
-            throw createHttpError(400, "Ingredient name missing");
-        }
+    return Promise.all(quantities.map(async (quantity, i) => {
+        let name = names[i];
 
         if (!quantity || !quantity.trim()) {
             throw createHttpError(400, "Ingredient quantity missing");
         }
 
-        name = name.trim().toLowerCase();
+        if (!name || !name.trim()) {
+            throw createHttpError(400, "Ingredient name missing");
+        }
+
         quantity = quantity.trim().toLowerCase();
+        name = name.trim().toLowerCase();
         let ingredient = quantity + " " + name;
 
         return ingredient;
