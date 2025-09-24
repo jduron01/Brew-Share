@@ -82,7 +82,7 @@ export const createRecipe: RequestHandler<unknown, unknown, CreateRecipeBody, un
         const ingredients = await processIngredients(quantities, names);
         const savedRecipe = await Recipe.create({
             title,
-            user,
+            author: user.username,
             instructions,
             description,
             imageUrl,
@@ -126,6 +126,12 @@ export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRec
         assertIsDefined(authenticatedUserId);
         assertIsDefined(recipeId);
 
+        const user = await User.findById(authenticatedUserId).exec();
+
+        if (!user) {
+            throw createHttpError(401, "User not authenticated");
+        }
+
         if (!mongoose.isValidObjectId(recipeId)) {
             throw createHttpError(400, "Invalid recipe ID");
         }
@@ -167,7 +173,7 @@ export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRec
         }
 
         const updatedRecipe = await Recipe.findOneAndUpdate(
-            { _id: recipeId, user: authenticatedUserId, },
+            { _id: recipeId, author: user.username, },
             { title, instructions, description, imageUrl, ingredients, },
             { new: true },
         ).exec();
@@ -196,15 +202,15 @@ export const deleteRecipe: RequestHandler<DeleteRecipeParams, unknown, unknown, 
 
         const user = await User.findById(authenticatedUserId).exec();
 
-        if (!mongoose.isValidObjectId(recipeId)) {
-            throw createHttpError(400, "Invalid recipe ID");
-        }
-
         if (!user) {
             throw createHttpError(401, "User not authenticated");
         }
 
-        const deletedRecipe = await Recipe.findOneAndDelete({ _id: recipeId, user, }).exec();
+        if (!mongoose.isValidObjectId(recipeId)) {
+            throw createHttpError(400, "Invalid recipe ID");
+        }
+
+        const deletedRecipe = await Recipe.findOneAndDelete({ _id: recipeId, author: user.username, }).exec();
 
         if (!deletedRecipe) {
             throw createHttpError(404, "Recipe not found");

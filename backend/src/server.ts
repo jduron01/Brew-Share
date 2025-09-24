@@ -33,7 +33,7 @@ app.use(session({
         mongoUrl: env.MONGO_CONNECTION_STRING,
     }),
 }));
-app.use(lusca.csrf());
+// app.use(lusca.csrf());
 app.use("/api/users", userRoutes);
 app.use("/api/recipes", recipeRoutes);
 app.use("/api/reviews", requiresAuth, apiRateLimiter, reviewRoutes);

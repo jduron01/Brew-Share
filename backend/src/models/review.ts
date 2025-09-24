@@ -9,9 +9,8 @@ const reviewSchema = new mongoose.Schema({
         type: Number,
         required: true,
     },
-    user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+    commenter: {
+        type: String,
         required: true,
     },
     recipe: {

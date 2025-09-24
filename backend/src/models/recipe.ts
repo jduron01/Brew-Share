@@ -1,13 +1,27 @@
 import mongoose from "mongoose";
 
+const reviewSchema = new mongoose.Schema({
+    comment: {
+        type: String,
+        required: true,
+    },
+    rating: {
+        type: Number,
+        required: true,
+    },
+    commenter: {
+        type: String,
+        required: true,
+    },
+}, { timestamps: true });
+
 const recipeSchema = new mongoose.Schema({
     title: {
         type: String,
         required: true
     },
-    user: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+    author: {
+        type: String,
         required: true,
     },
     instructions: {
@@ -24,12 +38,9 @@ const recipeSchema = new mongoose.Schema({
         type: [String],
         required: true,
     },
-    reviews: [
-        {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Review",
-        }
-    ],
+    reviews: {
+        type: [reviewSchema],
+    },
 }, { timestamps: true });
 
 type Recipe = mongoose.InferSchemaType<typeof recipeSchema>;

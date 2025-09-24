@@ -30,16 +30,10 @@ export const getUserRecipes: RequestHandler<GetUserRecipesParams, unknown, unkno
             throw createHttpError(404, "User not found");
         }
 
-        const userRecipes = [];
+        const userRecipes = await Recipe.find({ _id: { $in: user.recipes } }).sort({ createdAt: -1 }).exec();
 
-        for (const recipeId of user.recipes) {
-            const recipe = await Recipe.findById(recipeId).exec();
-
-            if (!recipe) {
-                throw createHttpError(500, "Error finding user recipes");
-            }
-
-            userRecipes.push(recipe);
+        if (!userRecipes || userRecipes.length !== user.recipes.length) {
+            throw createHttpError(500, "Error finding user recipes");
         }
 
         response.status(200).json(userRecipes);
