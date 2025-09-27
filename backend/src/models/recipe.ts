@@ -1,21 +1,23 @@
 import mongoose from "mongoose";
+import { ingredientSchema } from "../schemas/ingredient.js";
 
-const reviewSchema = new mongoose.Schema({
-    comment: {
-        type: String,
-        required: true,
-    },
-    rating: {
-        type: Number,
-        required: true,
-    },
-    commenter: {
-        type: String,
-        required: true,
-    },
-}, { timestamps: true });
+export enum BrewMethod {
+    Espresso = "espresso",
+    PourOver = "pour-over",
+    FrenchPress = "french-press",
+    AeroPress = "aero-press",
+    ColdBrew = "cold-brew",
+    MokaPot = "moka-pot",
+    Other = "other",
+};
 
-const recipeSchema = new mongoose.Schema({
+export enum Difficulty {
+    Beginner = "beginner",
+    Intermediate = "intermediate",
+    Expert = "expert",
+};
+
+export const recipeSchema = new mongoose.Schema({
     title: {
         type: String,
         required: true
@@ -35,11 +37,25 @@ const recipeSchema = new mongoose.Schema({
         type: String,
     },
     ingredients: {
-        type: [String],
+        type: [ingredientSchema],
         required: true,
     },
-    reviews: {
-        type: [reviewSchema],
+    brewMethod: {
+        type: String,
+        enum: BrewMethod,
+        default: "other",
+    },
+    brewTime: {
+        type: Number,
+        min: 0,
+    },
+    difficulty: {
+        type: String,
+        enum: Difficulty,
+        default: "intermediate",
+    },
+    averageRating: {
+        type: Number,
     },
 }, { timestamps: true });
 

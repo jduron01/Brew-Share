@@ -30,9 +30,9 @@ export const getUserRecipes: RequestHandler<GetUserRecipesParams, unknown, unkno
             throw createHttpError(404, "User not found");
         }
 
-        const userRecipes = await Recipe.find({ _id: { $in: user.recipes } }).sort({ createdAt: -1 }).exec();
+        const userRecipes = await Recipe.find({ author: user.username }).sort({ createdAt: -1 }).exec();
 
-        if (!userRecipes || userRecipes.length !== user.recipes.length) {
+        if (!userRecipes) {
             throw createHttpError(500, "Error finding user recipes");
         }
 
@@ -52,26 +52,6 @@ export const signUp: RequestHandler<unknown, unknown, SignUpBody, unknown> = asy
     const { username, email, password } = request.body;
 
     try {
-        if (!username) {
-            throw createHttpError(400, "Username is missing");
-        }
-
-        if (typeof username !== "string") {
-            throw createHttpError(400, "Invalid username");
-        }
-
-        if (!email) {
-            throw createHttpError(400, "Email is missing");
-        }
-
-        if (typeof email !== "string") {
-            throw createHttpError(400, "Invalid email");
-        }
-
-        if (!password) {
-            throw createHttpError(400, "Password is missing");
-        }
-
         const existingUsername = await User.findOne({ username }).exec();
 
         if (existingUsername) {
@@ -108,18 +88,6 @@ export const logIn: RequestHandler<unknown, unknown, LogInBody, unknown> = async
     const { username, password } = request.body;
 
     try {
-        if (!username) {
-            throw createHttpError(400, "Username is missing");
-        }
-
-        if (typeof username !== "string") {
-            throw createHttpError(400, "Invalid username");
-        }
-
-        if (!password) {
-            throw createHttpError(400, "Password is missing");
-        }
-
         const user = await User.findOne({ username }).select("+password +email").exec();
 
         if (!user) {

@@ -1,10 +1,10 @@
 import express from "express";
 import cors from "cors";
 import session from "express-session";
-import lusca from "lusca";
 import MongoStore from "connect-mongo";
 import morgan from "morgan";
-import env from "./util/validate.js";
+import helmet from "helmet";
+import env from "./util/validateEnvVars.js";
 import connectDB from "./config/database.js";
 import userRoutes from "./routes/userRoutes.js";
 import recipeRoutes from "./routes/recipeRoutes.js";
@@ -20,20 +20,34 @@ app.use(express.json());
 app.use(cors({
     origin: "http://localhost:5173",
 }));
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"], // Adjust for your React app
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https:"],
+        },
+    },
+    crossOriginEmbedderPolicy: false, // May be needed for React dev
+}));
 app.use(session({
     secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    name: "sessionId",
     cookie: {
         maxAge: 60 * 60 * 1000,
         secure: env.NODE_ENV === "production",
+        httpOnly: true,
+        sameSite: "lax",
     },
     rolling: true,
     store: MongoStore.create({
         mongoUrl: env.MONGO_CONNECTION_STRING,
+        ttl: 60 * 60,
     }),
 }));
-// app.use(lusca.csrf());
 app.use("/api/users", userRoutes);
 app.use("/api/recipes", recipeRoutes);
 app.use("/api/reviews", requiresAuth, apiRateLimiter, reviewRoutes);

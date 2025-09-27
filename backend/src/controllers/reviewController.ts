@@ -1,12 +1,11 @@
 import type { RequestHandler } from "express";
-import mongoose from "mongoose";
 import createHttpError from "http-errors";
 import Review from "../models/review.js";
-import User from "../models/user.js";
 import Recipe from "../models/recipe.js";
+import User from "../models/user.js";
 import assertIsDefined from "../util/assertIsDefined.js";
 
-export const getReviews: RequestHandler = async (request, response, next) => {
+export const getMyReviews: RequestHandler = async (request, response, next) => {
     const authenticatedUserId = request.session.userId;
 
     try {
@@ -32,7 +31,7 @@ interface CreateReviewParams {
 
 interface CreateReviewBody {
     comment: string,
-    rating: number,
+    rating: string,
     commenter: string,
 };
 
@@ -51,45 +50,42 @@ export const createReview: RequestHandler<CreateReviewParams, unknown, CreateRev
             throw createHttpError(401, "User not authenticated");
         }
 
-        if (!mongoose.isValidObjectId(recipeId)) {
-            throw createHttpError(400, "Invalid recipe ID");
-        }
-
-        if (!comment) {
-            throw createHttpError(400, "Review is missing comment");
-        }
-
-        if (!rating) {
-            throw createHttpError(400, "Review is missing rating");
-        }
-
-        if (rating < 1 || rating > 5) {
-            throw createHttpError(400, "Rating needs to be between 1 and 5 inclusive");
-        }
-
         const reviewedRecipe = await Recipe.findById(recipeId).exec();
 
         if (!reviewedRecipe) {
             throw createHttpError(404, "Recipe not found");
         }
 
-        const commenter = user.username;
+        if (user.username === reviewedRecipe.author) {
+            throw createHttpError(403, "Users cannot review their own recipe");
+        }
+
         const review = await Review.create({
             comment,
             rating,
-            commenter,
-            recipe: reviewedRecipe,
+            commenter: user.username,
+            recipe: reviewedRecipe._id,
         });
 
-        reviewedRecipe.reviews.push({
-            _id: review._id,
-            comment,
-            rating,
-            commenter,
+        if (!review) {
+            throw createHttpError(500, "Error creating review for recipe");
+        }
+
+        let totalRating = 0;
+        const recipeReviews = await Review.find({ recipe: reviewedRecipe._id }).exec();
+
+        if (!recipeReviews) {
+            throw createHttpError(500, "Error finding reviews associated with recipe");
+        }
+
+        recipeReviews.map(review => {
+            totalRating += review.rating;
         });
+
+        reviewedRecipe.averageRating = totalRating / recipeReviews.length;
         await reviewedRecipe.save();
 
-        response.status(201).json(reviewedRecipe);
+        response.status(201).json(review);
     } catch (error) {
         next(error);
     }
@@ -101,7 +97,7 @@ interface UpdateReviewParams {
 
 interface UpdateReviewBody {
     comment?: string,
-    rating?: number,
+    rating?: string,
 };
 
 export const updateReview: RequestHandler<UpdateReviewParams, unknown, UpdateReviewBody, unknown> = async (request, response, next) => {
@@ -113,28 +109,10 @@ export const updateReview: RequestHandler<UpdateReviewParams, unknown, UpdateRev
         assertIsDefined(authenticatedUserId);
         assertIsDefined(reviewId);
 
-        const user = await User.findById(authenticatedUserId);
+        const user = await User.findById(authenticatedUserId).exec();
 
         if (!user) {
             throw createHttpError(401, "User not authenticated");
-        }
-
-        if (!mongoose.isValidObjectId(reviewId)) {
-            throw createHttpError(400, "Invalid review ID");
-        }
-
-        if (comment && typeof comment !== "string") {
-            throw createHttpError(400, "Invalid comment");
-        }
-
-        if (rating) {
-            if (typeof rating !== "number") {
-                throw createHttpError(400, "Invalid rating");
-            }
-
-            if (rating < 1 || rating > 5) {
-                throw createHttpError(400, "Rating needs to be between 1 and 5 inclusive");
-            }
         }
 
         const updatedReview = await Review.findOneAndUpdate(
@@ -147,27 +125,27 @@ export const updateReview: RequestHandler<UpdateReviewParams, unknown, UpdateRev
             throw createHttpError(404, "Review not found");
         }
 
-        const reviewedRecipe = await Recipe.findById(updatedReview.recipe);
+        const reviewedRecipe = await Recipe.findById(updatedReview.recipe).exec();
 
         if (!reviewedRecipe) {
             throw createHttpError(400, "Recipe not found");
         }
 
-        const recipeReview = reviewedRecipe.reviews.find((review) => review._id.equals(updatedReview._id));
+        let totalRating = 0;
+        const recipeReviews = await Review.find({ recipe: reviewedRecipe._id }).exec();
 
-        if (recipeReview) {
-            if (comment) {
-                recipeReview.comment = comment;
-            }
-
-            if (rating) {
-                recipeReview.rating = rating;
-            }
+        if (!recipeReviews) {
+            throw createHttpError(500, "Error finding reviews associated with recipe");
         }
 
+        recipeReviews.map(review => {
+            totalRating += review.rating;
+        });
+
+        reviewedRecipe.averageRating = totalRating / recipeReviews.length;
         await reviewedRecipe.save();
 
-        response.status(200).json(reviewedRecipe);
+        response.status(200).json(updatedReview);
     } catch (error) {
         next(error);
     }
@@ -191,23 +169,30 @@ export const deleteReview: RequestHandler<DeleteReviewParams, unknown, unknown, 
             throw createHttpError(401, "User not authenticated");
         }
 
-        if (!mongoose.isValidObjectId(reviewId)) {
-            throw createHttpError(400, "Invalid review ID");
-        }
-
         const deletedReview = await Review.findOneAndDelete({ _id: reviewId, commenter: user.username }).exec();
 
         if (!deletedReview) {
             throw createHttpError(404, "Review not found");
         }
 
-        const reviewedRecipe = await Recipe.findById(deletedReview.recipe);
+        const reviewedRecipe = await Recipe.findById(deletedReview.recipe).exec();
 
         if (!reviewedRecipe) {
             throw createHttpError(404, "Recipe not found");
         }
 
-        reviewedRecipe.reviews.pull(deletedReview._id);
+        let totalRating = 0;
+        const recipeReviews = await Review.find({ recipe: reviewedRecipe._id }).exec();
+
+        if (!recipeReviews) {
+            throw createHttpError(500, "Error finding reviews associated with recipe");
+        }
+
+        recipeReviews.map(review => {
+            totalRating += review.rating;
+        });
+
+        reviewedRecipe.averageRating = totalRating / recipeReviews.length;
         await reviewedRecipe.save();
 
         response.sendStatus(204);

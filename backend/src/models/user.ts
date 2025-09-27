@@ -17,13 +17,7 @@ const userSchema = new mongoose.Schema({
         required: true,
         select: false,
     },
-    recipes: [
-        {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Recipe",
-        }
-    ],
-});
+}, { timestamps: true });
 
 type User = mongoose.InferSchemaType<typeof userSchema>;
 

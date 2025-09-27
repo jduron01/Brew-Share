@@ -1,9 +1,11 @@
 import type { RequestHandler } from "express";
-import mongoose from "mongoose";
 import createHttpError from "http-errors";
 import Recipe from "../models/recipe.js";
+import type { Ingredient } from "../schemas/ingredient.js";
+import Review from "../models/review.js";
 import User from "../models/user.js";
 import assertIsDefined from "../util/assertIsDefined.js";
+import { validateIngredients } from "../util/validateIngredient.js";
 
 export const getRecipes: RequestHandler = async (request, response, next) => {
     try {
@@ -24,17 +26,19 @@ export const getRecipe: RequestHandler<GetRecipeParams, unknown, unknown, unknow
     try {
         assertIsDefined(recipeId);
 
-        if (!mongoose.isValidObjectId(recipeId)) {
-            throw createHttpError(400, "Invalid recipe ID");
-        }
+        const data = await Recipe.findById(recipeId).exec();
 
-        const recipe = await Recipe.findById(recipeId).exec();
-
-        if (!recipe) {
+        if (!data) {
             throw createHttpError(404, "Recipe not found");
         }
 
-        response.status(200).json(recipe);
+        const reviews = await Review.find({ recipe: recipeId }).sort({ createdAt: -1 }).exec();
+
+        if (!reviews) {
+            throw createHttpError(404, "Reviews associated with recipe not found");
+        }
+
+        response.status(200).json({ data, reviews });
     } catch (error) {
         next(error);
     }
@@ -42,17 +46,18 @@ export const getRecipe: RequestHandler<GetRecipeParams, unknown, unknown, unknow
 
 interface CreateRecipeBody {
     title: string,
-    author: string,
     instructions: string[],
     description?: string,
     imageUrl?: string,
-    quantities: string[],
-    names: string[],
+    ingredients: Ingredient[],
+    brewMethod?: string,
+    brewTime?: number,
+    difficulty?: string,
 };
 
 export const createRecipe: RequestHandler<unknown, unknown, CreateRecipeBody, unknown> = async (request, response, next) => {
     const authenticatedUserId = request.session.userId;
-    const { title, instructions, description, imageUrl, quantities, names } = request.body;
+    const { title, instructions, description, imageUrl, ingredients, brewMethod, brewTime, difficulty } = request.body;
 
     try {
         assertIsDefined(authenticatedUserId);
@@ -63,40 +68,20 @@ export const createRecipe: RequestHandler<unknown, unknown, CreateRecipeBody, un
             throw createHttpError(401, "User not authenticated");
         }
 
-        if (!title) {
-            throw createHttpError(400, "Recipe title is missing");
-        }
-
-        if (!instructions || instructions.length === 0) {
-            throw createHttpError(400, "Recipe instructions are missing");
-        }
-
-        if (!quantities || quantities.length === 0) {
-            throw createHttpError(400, "Recipe ingredient quantities are missing");
-        }
-
-        if (!names || names.length === 0) {
-            throw createHttpError(400, "Recipe ingredient names are missing");
-        }
-
-        const ingredients = await processIngredients(quantities, names);
+        const { validatedIngredients, warnings } = validateIngredients(ingredients);
         const savedRecipe = await Recipe.create({
             title,
             author: user.username,
             instructions,
             description,
             imageUrl,
-            ingredients,
+            ingredients: validatedIngredients,
+            brewMethod,
+            brewTime,
+            difficulty,
         });
 
-        if (!savedRecipe) {
-            throw createHttpError(500, "Error saving recipe");
-        }
-
-        user.recipes.push(savedRecipe._id);
-        await user.save();
-
-        response.status(201).json(savedRecipe);
+        response.status(201).json({ savedRecipe, warnings });
     } catch (error) {
         next(error);
     }
@@ -112,15 +97,16 @@ interface UpdateRecipeBody {
     instructions?: string[],
     description?: string,
     imageUrl?: string,
-    quantities?: string[],
-    names?: string[],
+    ingredients?: Ingredient[],
+    brewMethod?: string,
+    brewTime?: number,
+    difficulty?: string,
 };
 
 export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRecipeBody, unknown> = async (request, response, next) => {
     const authenticatedUserId = request.session.userId;
     const recipeId = request.params.id;
-    const { title, instructions, description, imageUrl, quantities, names } = request.body;
-    let ingredients;
+    const { title, instructions, description, imageUrl, ingredients, brewMethod, brewTime, difficulty } = request.body;
 
     try {
         assertIsDefined(authenticatedUserId);
@@ -132,49 +118,17 @@ export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRec
             throw createHttpError(401, "User not authenticated");
         }
 
-        if (!mongoose.isValidObjectId(recipeId)) {
-            throw createHttpError(400, "Invalid recipe ID");
-        }
+        let validatedIngredients, warnings;
 
-        if (title && typeof title !== "string") {
-            throw createHttpError(400, "Invalid recipe title");
-        }
-
-        if (instructions) {
-            for (const instruction of instructions) {
-                if (typeof instruction !== "string") {
-                    throw createHttpError(400, "One or more recipe instructions are invalid");
-                }
-            }
-        }
-
-        if (description && typeof description !== "string") {
-            throw createHttpError(400, "Recipe description is invalid");
-        }
-
-        if (imageUrl && typeof imageUrl !== "string") {
-            throw createHttpError(400, "Recipe image URL is invalid");
-        }
-
-        if (quantities && names) {
-            for (const quantity of quantities) {
-                if (typeof quantity !== "string") {
-                    throw createHttpError(400, "One or more ingredient quantities are invalid");
-                }
-            }
-
-            for (const name of names) {
-                if (typeof name !== "string") {
-                    throw createHttpError(400, "One or more ingredient names are invalid");
-                }
-            }
-
-            ingredients = await processIngredients(quantities, names);
+        if (ingredients) {
+            const result = validateIngredients(ingredients);
+            validatedIngredients = result.validatedIngredients;
+            warnings = result.warnings;
         }
 
         const updatedRecipe = await Recipe.findOneAndUpdate(
-            { _id: recipeId, author: user.username, },
-            { title, instructions, description, imageUrl, ingredients, },
+            { _id: recipeId, author: user.username },
+            { title, instructions, description, imageUrl, ingredients: validatedIngredients, brewMethod, brewTime, difficulty },
             { new: true },
         ).exec();
 
@@ -182,7 +136,7 @@ export const updateRecipe: RequestHandler<UpdateRecipeParams, unknown, UpdateRec
             throw createHttpError(404, "Recipe not found");
         }
 
-        response.status(200).json(updatedRecipe);
+        response.status(200).json({ updatedRecipe, warnings });
     } catch (error) {
         next(error);
     }
@@ -206,45 +160,20 @@ export const deleteRecipe: RequestHandler<DeleteRecipeParams, unknown, unknown, 
             throw createHttpError(401, "User not authenticated");
         }
 
-        if (!mongoose.isValidObjectId(recipeId)) {
-            throw createHttpError(400, "Invalid recipe ID");
-        }
-
         const deletedRecipe = await Recipe.findOneAndDelete({ _id: recipeId, author: user.username, }).exec();
 
         if (!deletedRecipe) {
             throw createHttpError(404, "Recipe not found");
         }
 
-        user.recipes = user.recipes.filter((id) => !id.equals(deletedRecipe._id));
-        await user.save();
+        const deletedReviews = await Review.deleteMany({ recipe: deletedRecipe._id }).exec();
+
+        if (!deletedReviews) {
+            throw createHttpError(500, "Error in deleting reviews associated with deleted recipe");
+        }
 
         response.sendStatus(204);
     } catch (error) {
         next(error);
     }
-};
-
-const processIngredients = async (quantities: string[], names: string[]) => {
-    if (quantities.length !== names.length) {
-        throw createHttpError(400, "Ingredient names don't match quantities");
-    }
-
-    return Promise.all(quantities.map(async (quantity, i) => {
-        let name = names[i];
-
-        if (!quantity || !quantity.trim()) {
-            throw createHttpError(400, "Ingredient quantity missing");
-        }
-
-        if (!name || !name.trim()) {
-            throw createHttpError(400, "Ingredient name missing");
-        }
-
-        quantity = quantity.trim().toLowerCase();
-        name = name.trim().toLowerCase();
-        let ingredient = quantity + " " + name;
-
-        return ingredient;
-    }));
 };
